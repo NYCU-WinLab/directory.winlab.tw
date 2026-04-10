@@ -32,6 +32,7 @@ export type MemberRole =
   | "undergraduate"
   | "alumni"
   | "staff"
+  | "pending"
 
 export interface Member {
   id: string
@@ -47,6 +48,7 @@ export interface Member {
   research_areas: string[] | null
   joined_year: number | null
   is_active: boolean
+  student_id: string | null
 }
 
 export const ROLE_LABELS: Record<MemberRole, string> = {
@@ -56,6 +58,7 @@ export const ROLE_LABELS: Record<MemberRole, string> = {
   undergraduate: "大學生",
   alumni: "校友",
   staff: "行政人員",
+  pending: "待確認",
 }
 
 export const ROLE_ORDER: MemberRole[] = [
@@ -65,4 +68,5 @@ export const ROLE_ORDER: MemberRole[] = [
   "undergraduate",
   "staff",
   "alumni",
+  "pending",
 ]

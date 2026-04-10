@@ -7,9 +7,26 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useMembers } from "@/hooks/use-members"
 import { ROLE_LABELS, ROLE_ORDER, type Member, type MemberRole } from "@/types/member"
-import { Mail, MapPin, Phone, Search } from "lucide-react"
+import { ChevronRight, Mail, Phone, Search } from "lucide-react"
 
 const ALL_ROLES = "all"
+
+const YEAR_CHAR_MAP: Record<string, number> = {
+  一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8,
+}
+
+function getYearFromTitle(title: string | null): number {
+  const match = title?.match(/([一二三四五六七八])年級/)
+  return match ? (YEAR_CHAR_MAP[match[1]] ?? 99) : 99
+}
+
+function masterYearLabel(year: number): string {
+  return year === 99 ? "其他" : `碩${["一", "二", "三", "四", "五", "六", "七", "八"][year - 1]}`
+}
+
+function phdYearLabel(year: number): string {
+  return year === 99 ? "其他" : `博${["一", "二", "三", "四", "五", "六", "七", "八"][year - 1]}`
+}
 
 function matches(value: string | null | undefined, query: string): boolean {
   return !!value && value.toLowerCase().includes(query)
@@ -75,13 +92,10 @@ function MemberRow({ member }: { member: Member }) {
         )}
       </td>
 
-      {/* Office */}
+      {/* Student ID */}
       <td className="px-3 py-3 pr-4">
-        {member.office ? (
-          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <MapPin className="h-3.5 w-3.5 shrink-0" />
-            <span>{member.office}</span>
-          </div>
+        {member.student_id ? (
+          <span className="font-mono text-sm text-muted-foreground">{member.student_id}</span>
         ) : (
           <span className="text-sm text-muted-foreground/30">—</span>
         )}
@@ -114,24 +128,34 @@ export function MemberGrid() {
   const { data: members, isLoading, error } = useMembers()
   const [query, setQuery] = useState("")
   const [selectedRole, setSelectedRole] = useState<MemberRole | typeof ALL_ROLES>(ALL_ROLES)
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+
+  const toggle = (key: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
 
   const filtered = useMemo(() => {
     if (!members) return []
     const q = query.trim().toLowerCase()
-    return members.filter((m) => {
-      const roleMatch = selectedRole === ALL_ROLES || m.role === selectedRole
-      if (!roleMatch) return false
-      if (!q) return true
-      return (
-        matches(m.name, q) ||
-        matches(m.name_en, q) ||
-        matches(m.email, q) ||
-        matches(m.phone, q) ||
-        matches(m.office, q) ||
-        matches(m.title, q) ||
-        m.research_areas?.some((a) => a.toLowerCase().includes(q))
-      )
-    })
+    return members
+      .filter((m) => {
+        const roleMatch = selectedRole === ALL_ROLES || m.role === selectedRole
+        if (!roleMatch) return false
+        if (!q) return true
+        return (
+          matches(m.name, q) ||
+          matches(m.name_en, q) ||
+          matches(m.email, q) ||
+          matches(m.phone, q) ||
+          matches(m.office, q) ||
+          matches(m.title, q) ||
+          m.research_areas?.some((a) => a.toLowerCase().includes(q))
+        )
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, "zh-TW"))
   }, [members, query, selectedRole])
 
   const availableRoles = useMemo(() => {
@@ -139,6 +163,52 @@ export function MemberGrid() {
     const present = new Set(members.map((m) => m.role))
     return ROLE_ORDER.filter((r) => present.has(r))
   }, [members])
+
+  // 通用：依年級分群 + 可折疊，prefix 決定 key 和 label
+  const renderYearRows = (
+    groupMembers: Member[],
+    prefix: string,
+    labelFn: (year: number) => string
+  ) => {
+    const byYear = new Map<number, Member[]>()
+    for (const m of groupMembers) {
+      const y = getYearFromTitle(m.title)
+      if (!byYear.has(y)) byYear.set(y, [])
+      byYear.get(y)!.push(m)
+    }
+    return [...byYear.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([year, sgMembers]) => {
+        const key = `${prefix}-${year}`
+        const isCollapsed = collapsed.has(key)
+        return (
+          <React.Fragment key={year}>
+            <tr
+              className="cursor-pointer select-none border-b border-border/40 transition-colors hover:bg-muted/20"
+              onClick={() => toggle(key)}
+            >
+              <td colSpan={5} className="bg-muted/10 px-8 py-1.5">
+                <div className="flex items-center gap-1.5">
+                  <ChevronRight
+                    className={`h-3 w-3 text-muted-foreground/50 transition-transform duration-150 ${isCollapsed ? "" : "rotate-90"}`}
+                  />
+                  <span className="text-xs font-medium text-muted-foreground/70">
+                    {labelFn(year)}
+                  </span>
+                  <span className="ml-1 text-xs text-muted-foreground/40">{sgMembers.length}</span>
+                </div>
+              </td>
+            </tr>
+            {!isCollapsed && sgMembers.map((member) => (
+              <MemberRow key={member.id} member={member} />
+            ))}
+          </React.Fragment>
+        )
+      })
+  }
+
+  const renderMasterRows = (m: Member[]) => renderYearRows(m, "master", masterYearLabel)
+  const renderPhdRows    = (m: Member[]) => renderYearRows(m, "phd",    phdYearLabel)
 
   if (error) {
     return (
@@ -197,7 +267,7 @@ export function MemberGrid() {
               <th className="px-3 py-2.5 text-xs font-medium text-muted-foreground">身份</th>
               <th className="px-3 py-2.5 text-xs font-medium text-muted-foreground">Email</th>
               <th className="px-3 py-2.5 text-xs font-medium text-muted-foreground">電話</th>
-              <th className="px-3 py-2.5 pr-4 text-xs font-medium text-muted-foreground">辦公室</th>
+              <th className="px-3 py-2.5 pr-4 text-xs font-medium text-muted-foreground">工號/學號</th>
             </tr>
           </thead>
           <tbody>
@@ -209,36 +279,51 @@ export function MemberGrid() {
                   {query ? `找不到「${query}」相關的成員` : "尚無成員資料"}
                 </td>
               </tr>
+            ) : selectedRole !== ALL_ROLES ? (
+              // 單一身份篩選
+              selectedRole === "master"
+                ? renderMasterRows(filtered)
+                : selectedRole === "phd"
+                  ? renderPhdRows(filtered)
+                  : filtered.map((member) => <MemberRow key={member.id} member={member} />)
             ) : (
-              (() => {
-                // Group by role in ROLE_ORDER, only when showing all roles
-                if (selectedRole !== ALL_ROLES) {
-                  return filtered.map((member) => <MemberRow key={member.id} member={member} />)
-                }
-
-                const groups = ROLE_ORDER
-                  .map((role) => ({
-                    role,
-                    members: filtered.filter((m) => m.role === role),
-                  }))
-                  .filter((g) => g.members.length > 0)
-
-                return groups.map(({ role, members }) => (
-                  <React.Fragment key={role}>
-                    <tr className="border-b border-border/50 bg-muted/20">
-                      <td colSpan={5} className="px-4 py-1.5">
-                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                          {ROLE_LABELS[role]}
-                        </span>
-                        <span className="ml-2 text-xs text-muted-foreground/60">{members.length}</span>
-                      </td>
-                    </tr>
-                    {members.map((member) => (
-                      <MemberRow key={member.id} member={member} />
-                    ))}
-                  </React.Fragment>
-                ))
-              })()
+              // 全部 → 依 ROLE_ORDER 分組，每組可折疊
+              ROLE_ORDER
+                .map((role) => ({
+                  role,
+                  members: filtered.filter((m) => m.role === role),
+                }))
+                .filter((g) => g.members.length > 0)
+                .map(({ role, members }) => {
+                  const isCollapsed = collapsed.has(role)
+                  return (
+                    <React.Fragment key={role}>
+                      <tr
+                        className="cursor-pointer select-none border-b border-border/50 transition-colors hover:bg-muted/30"
+                        onClick={() => toggle(role)}
+                      >
+                        <td colSpan={5} className="bg-muted/20 px-4 py-1.5">
+                          <div className="flex items-center gap-2">
+                            <ChevronRight
+                              className={`h-3.5 w-3.5 text-muted-foreground/60 transition-transform duration-150 ${isCollapsed ? "" : "rotate-90"}`}
+                            />
+                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                              {ROLE_LABELS[role]}
+                            </span>
+                            <span className="text-xs text-muted-foreground/60">{members.length}</span>
+                          </div>
+                        </td>
+                      </tr>
+                      {!isCollapsed && (
+                        role === "master"
+                          ? renderMasterRows(members)
+                          : role === "phd"
+                            ? renderPhdRows(members)
+                            : members.map((member) => <MemberRow key={member.id} member={member} />)
+                      )}
+                    </React.Fragment>
+                  )
+                })
             )}
           </tbody>
         </table>

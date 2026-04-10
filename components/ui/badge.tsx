@@ -16,6 +16,7 @@ const badgeVariants = cva(
         undergraduate: "border-transparent bg-amber-500/15 text-amber-400 dark:bg-amber-500/20",
         alumni: "border-transparent bg-zinc-500/15 text-zinc-400 dark:bg-zinc-500/20",
         staff: "border-transparent bg-teal-500/15 text-teal-400 dark:bg-teal-500/20",
+        pending: "border-transparent bg-orange-500/15 text-orange-400 dark:bg-orange-500/20",
       },
     },
     defaultVariants: { variant: "default" },
